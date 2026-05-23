@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Manager Lite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+</head>
+
+<body>
+
+  <!-- Auth Page -->
+  <div id="auth-page" class="auth-page">
+    <div class="auth-card" id="login-card">
+      <div class="auth-header">
+        <h2>💸 Expense Manager Lite</h2>
+        <p>Smart money tracking</p>
+      </div>
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <input type="text" id="login-username" class="form-control" placeholder="Username" required>
+        </div>
+        <div class="form-group">
+          <input type="password" id="login-password" class="form-control" placeholder="Password" required>
+        </div>
+        <div id="login-error" class="error-msg"></div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Login</button>
+        <div class="auth-footer">
+          <a href="#" onclick="toggleAuth('register')">Don't have an account? Register</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="auth-card" id="register-card" style="display: none;">
+      <div class="auth-header">
+        <h2>💸 Expense Manager Lite</h2>
+        <p>Create your account</p>
+      </div>
+      <form id="register-form" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <input type="text" id="reg-fullname" class="form-control" placeholder="Full Name" required>
+        </div>
+        <div class="form-group">
+          <input type="text" id="reg-username" class="form-control" placeholder="Username (min 3 chars)" required minlength="3">
+        </div>
+        <div class="form-group">
+          <input type="password" id="reg-password" class="form-control" placeholder="Password (min 6 chars)" required minlength="6">
+        </div>
+        <div class="form-group">
+          <input type="password" id="reg-confirm" class="form-control" placeholder="Confirm Password" required>
+        </div>
+        <div id="register-error" class="error-msg"></div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Create Account</button>
+        <div class="auth-footer">
+          <a href="#" onclick="toggleAuth('login')">Already have an account? Login</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sidebar Navigation -->
+  <div class="sidebar" id="sidebar" style="display: none;">
+    <div class="logo">💸 EMLite</div>
+    <ul class="nav-links">
+      <li><a class="nav-link active" data-target="dashboard" onclick="navigateTo('dashboard')">Dashboard</a></li>
+      <li><a class="nav-link" data-target="add" onclick="navigateTo('add')">Add Transaction</a></li>
+      <li><a class="nav-link" data-target="history" onclick="navigateTo('history')">Transaction History</a></li>
+      <li><a class="nav-link" data-target="reports" onclick="navigateTo('reports')">Reports & Summary</a></li>
+    </ul>
+    <div class="sidebar-balance" id="sidebar-balance-card">
+      <div style="font-weight: 500; margin-bottom: 8px; color: var(--text);" id="sidebar-welcome">Welcome, User</div>
+      <div class="label">Net Balance</div>
+      <div class="amount" id="sidebar-net-balance">₹0.00</div>
+    </div>
+  </div>
+
+  <!-- Main Content Area -->
+  <div class="main-content" id="main-content" style="display: none;">
+    <div class="topbar">
+      <div style="display: flex; align-items: center;">
+        <button class="mobile-menu-btn" onclick="toggleSidebar()">☰</button>
+        <h2 id="page-title">Dashboard</h2>
+      </div>
+      <div class="user-actions">
+        <span id="topbar-fullname" style="font-weight: 500; margin-right: 16px;"></span>
+        <button class="btn btn-danger" onclick="handleLogout()" style="padding: 6px 12px;">Logout</button>
+      </div>
+    </div>
+
+    <!-- PAGE 1: DASHBOARD -->
+    <div id="dashboard" class="page active">
+      <div class="stats-grid">
+        <div class="card stat-card income">
+          <div class="label">Total Income</div>
+          <div class="amount" id="dash-income">₹0.00</div>
+        </div>
+        <div class="card stat-card expense">
+          <div class="label">Total Expenses</div>
+          <div class="amount" id="dash-expense">₹0.00</div>
+        </div>
+        <div class="card stat-card">
+          <div class="label">Net Balance</div>
+          <div class="amount" id="dash-net">₹0.00</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="chart-header">
+          <h3 style="margin: 0;">Recent Transactions</h3>
+          <button class="btn" style="padding: 8px 16px; background: var(--bg); color: var(--text);"
+            onclick="navigateTo('history')">View All</button>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Date</th>
+                <th class="right-align">Amount</th>
+              </tr>
+            </thead>
+            <tbody id="recent-tbody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 2: ADD TRANSACTION -->
+    <div id="add" class="page">
+      <div class="card" style="max-width: 600px; margin: 0 auto;">
+        <div class="type-toggle">
+          <button type="button" class="type-toggle-btn active" id="btn-type-expense"
+            onclick="setAddType('expense')">Expense</button>
+          <button type="button" class="type-toggle-btn" id="btn-type-income"
+            onclick="setAddType('income')">Income</button>
+        </div>
+
+        <form id="add-form" onsubmit="handleAdd(event)">
+          <div class="form-group">
+            <label>Amount (₹)</label>
+            <input type="number" step="0.01" min="0.01" class="form-control" id="add-amount" placeholder="0.00"
+              required>
+          </div>
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" class="form-control" id="add-date" required>
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select class="form-control" id="add-category" required>
+              <!-- Populated dynamically based on type -->
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" class="form-control" id="add-desc" placeholder="What was this for?" required
+              maxlength="50">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px; font-size: 16px;">Save
+            Transaction</button>
+        </form>
+
+        <div class="receipt-scanner" style="margin-top: 24px;">
+          <input type="file" id="receipt-upload" accept="image/jpeg, image/png, image/webp" style="display: none;" onchange="handleReceiptScan(event)">
+          <button type="button" class="btn scan-btn" onclick="document.getElementById('receipt-upload').click()">
+            📷 Scan Receipt — Upload a photo to auto-fill
+          </button>
+          <div id="scan-preview-container" style="display: none; text-align: center; margin-top: 12px;">
+            <img id="scan-preview" src="" alt="Receipt Preview" style="max-height: 120px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            <div id="scan-status" style="margin-top: 8px; font-weight: 500; color: var(--muted);">🔍 Scanning receipt...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 3: HISTORY -->
+    <div id="history" class="page">
+      <div class="card">
+        <div class="chart-header" style="margin-bottom: 24px;">
+          <div class="filters">
+            <select class="form-control" id="filter-type" onchange="updateHistory()">
+              <option value="all">All Types</option>
+              <option value="income">Income Only</option>
+              <option value="expense">Expense Only</option>
+            </select>
+            <select class="form-control" id="filter-category" onchange="updateHistory()">
+              <!-- Populated by JS -->
+            </select>
+            <input type="text" class="form-control" id="filter-search" placeholder="Search description..."
+              oninput="updateHistory()">
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Date</th>
+                <th class="right-align">Amount</th>
+                <th style="width: 100px; text-align: center;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+          <div id="history-empty" class="empty-state" style="display: none;">
+            <div class="empty-state-icon">📋</div>
+            <h3>No transactions found</h3>
+            <p>Try adjusting your filters or add a new transaction.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 4: REPORTS -->
+    <div id="reports" class="page">
+      <div class="report-actions" style="display: flex; gap: 12px; margin-bottom: 24px;">
+        <button class="btn btn-primary" onclick="downloadMonthlyPDF()" style="flex: 1; background: var(--income);">📄 Monthly Overview PDF</button>
+        <button class="btn" onclick="downloadWeeklyPDF()" style="flex: 1; border: 1px solid var(--border); background: transparent; color: var(--text);">📄 Weekly Overview PDF</button>
+      </div>
+      <div class="reports-grid">
+        <div class="card">
+          <h3 style="margin-bottom: 32px;">Income vs Expense</h3>
+          <div class="donut-container">
+            <svg width="220" height="220" viewBox="0 0 42 42" style="transform: rotate(-90deg);">
+              <!-- Background ring -->
+              <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--bg)" stroke-width="6">
+              </circle>
+              <!-- Income ring -->
+              <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--income)" stroke-width="6"
+                stroke-dasharray="0 100" id="donut-income" style="transition: stroke-dasharray 0.8s ease-out;"></circle>
+              <!-- Expense ring -->
+              <circle cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="var(--expense)" stroke-width="6"
+                stroke-dasharray="0 100" stroke-dashoffset="0" id="donut-expense"
+                style="transition: stroke-dasharray 0.8s ease-out, stroke-dashoffset 0.8s ease-out;"></circle>
+            </svg>
+            <div class="donut-legend">
+              <div class="legend-item">
+                <div class="legend-color" style="background: var(--income)"></div>Income
+              </div>
+              <div class="legend-item">
+                <div class="legend-color" style="background: var(--expense)"></div>Expense
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom: 24px;">Spending by Category</h3>
+          <div class="bar-chart-container" id="bar-chart-container">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom: 24px;">Category Breakdown (Expenses)</h3>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th class="right-align">Count</th>
+                <th class="right-align">Total Amount</th>
+                <th class="right-align">% of Expenses</th>
+              </tr>
+            </thead>
+            <tbody id="breakdown-tbody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Chat Feature -->
+  <button class="chat-btn" onclick="toggleChat()" title="Ask AI Assistant">💬</button>
+  <div class="chat-panel" id="chat-panel">
+    <div class="chat-header">
+      <h3>✨ Ai Financial Assistant</h3>
+      <button class="close-chat" onclick="toggleChat()">×</button>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+      <div class="message ai">Hello! I'm your AI financial assistant powered by Groq. Ask me anything about your
+        spending, savings, or for personalized advice!</div>
+      <div class="typing-indicator" id="typing-indicator">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your finances..."
+        onkeypress="if(event.key === 'Enter') sendChatMessage()">
+      <button class="chat-send" onclick="sendChatMessage()">➤</button>
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div class="toast" id="toast">Success!</div>
+
+  <script src="script.js"></script>
+
+</body>
+
+</html>
