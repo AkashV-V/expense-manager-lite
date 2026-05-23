@@ -21,24 +21,24 @@ function init() {
 function checkAuth() {
     const savedToken = localStorage.getItem('emlite_token');
     const savedUser = localStorage.getItem('emlite_current_user');
-    
+
     if (savedToken && savedUser) {
         // User logged in
         authToken = savedToken;
         currentUser = JSON.parse(savedUser);
-        
+
         document.getElementById('auth-page').style.display = 'none';
         document.getElementById('sidebar').style.display = 'flex';
         document.getElementById('main-content').style.display = 'block';
-        
+
         document.getElementById('sidebar-welcome').textContent = `Welcome, ${currentUser.fullName.split(' ')[0]}`;
         document.getElementById('topbar-fullname').textContent = currentUser.fullName;
-        
+
         // Initialize app data
         setAddType('expense');
         document.getElementById('add-date').value = new Date().toISOString().split('T')[0];
         populateCategoryFilter();
-        
+
         loadTransactions().then(() => {
             navigateTo('dashboard');
         });
@@ -64,11 +64,11 @@ async function loadTransactions() {
 function toggleAuth(type) {
     const loginCard = document.getElementById('login-card');
     const registerCard = document.getElementById('register-card');
-    
+
     // Clear errors
     document.getElementById('login-error').classList.remove('show');
     document.getElementById('register-error').classList.remove('show');
-    
+
     if (type === 'register' || (!type && loginCard.style.display !== 'none')) {
         loginCard.style.display = 'none';
         registerCard.style.display = 'block';
@@ -103,13 +103,13 @@ async function handleLogin(e) {
         if (!res.ok) {
             showAuthError('login-error', data.message); return;
         }
-        
+
         // Save token and user
         authToken = data.token;
         currentUser = data.user;
         localStorage.setItem('emlite_token', data.token);
         localStorage.setItem('emlite_current_user', JSON.stringify(data.user));
-        
+
         document.getElementById('login-form').reset();
         showAuthError('login-error', '');
         checkAuth();
@@ -199,7 +199,7 @@ function toggleSidebar() {
 
 // Utility Functions
 function formatCurrency(num) {
-    return 'â‚¹' + num.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+    return '₹' + num.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
 }
 
 function calculateStats(txns = transactions) {
@@ -303,19 +303,19 @@ async function handleAdd(e) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ 
-                type: currentType, amount, date, category, desc 
+            body: JSON.stringify({
+                type: currentType, amount, date, category, desc
             })
         });
         const newTxn = await res.json();
         transactions.unshift(newTxn);
         updateDashboard();
-        
+
         // Reset Form
         document.getElementById('add-form').reset();
         document.getElementById('add-date').value = new Date().toISOString().split('T')[0];
         setAddType('expense');
-        
+
         showToast('Transaction added successfully!');
     } catch (err) {
         showToast('Error adding transaction');
@@ -505,19 +505,19 @@ async function sendChatMessage() {
     const { totalIncome, totalExpense, netBalance } = calculateStats();
 
     const recent = [...transactions].slice(0, 5)
-        .map(t => `${t.date} | ${t.desc} | ${t.category} | ${t.type === 'income' ? '+' : '-'}â‚¹${t.amount}`)
+        .map(t => `${t.date} | ${t.desc} | ${t.category} | ${t.type === 'income' ? '+' : '-'}₹${t.amount}`)
         .join('\n');
 
     const expenses = transactions.filter(t => t.type === 'expense');
     const catMap = {};
     expenses.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
-    const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => `${e[0]} (â‚¹${e[1]})`).join(', ');
+    const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => `${e[0]} (₹${e[1]})`).join(', ');
 
     const systemPrompt = `You are a personal finance assistant for Expense Manager Lite.
 The user's current financial data:
-- Total Income: â‚¹${totalIncome}
-- Total Expenses: â‚¹${totalExpense}
-- Net Balance: â‚¹${netBalance}
+- Total Income: ₹${totalIncome}
+- Total Expenses: ₹${totalExpense}
+- Net Balance: ₹${netBalance}
 - Top spending categories: ${topCats || 'None'}
 - Recent transactions:
 ${recent || 'None'}
@@ -526,30 +526,25 @@ Give concise, practical, friendly financial advice based on this data.
 Keep responses under 100 words unless detailed analysis is requested.`;
 
     try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const response = await fetch(`${API_URL}/transactions/chat`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`
+                'Authorization': `Bearer ${authToken}`
             },
             body: JSON.stringify({
-                model: 'llama-3.1-8b-instant',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...chatHistory,
-                    { role: 'user', content: text }
-                ],
-                max_tokens: 300
+                message: [...chatHistory, { role: 'user', content: text }],
+                context: { totalIncome, totalExpense, netBalance, topCats, recent }
             })
         });
 
         if (!response.ok) {
             const err = await response.json();
-            throw new Error(err.error?.message || 'API Request Failed');
+            throw new Error(err.message || 'API Request Failed');
         }
 
         const data = await response.json();
-        const aiResponse = data.choices[0].message.content;
+        const aiResponse = data.response;
 
         typing.classList.remove('show');
         appendMessage('ai', aiResponse);
@@ -592,63 +587,31 @@ function handleReceiptScan(event) {
     const statusDiv = document.getElementById('scan-status');
 
     previewContainer.style.display = 'block';
-    statusDiv.textContent = 'ðŸ” Scanning receipt...';
+    statusDiv.textContent = '🔍 Scanning receipt...';
     statusDiv.style.color = 'var(--muted)';
 
     const reader = new FileReader();
-    reader.onload = async function(e) {
+    reader.onload = async function (e) {
         const base64Data = e.target.result;
         previewImg.src = base64Data;
-        
+
         const base64Image = base64Data.split(',')[1];
-        
+
         try {
-            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            const response = await fetch(`${API_URL}/transactions/scan`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${API_KEY}`
+                    'Authorization': `Bearer ${authToken}`
                 },
-                body: JSON.stringify({
-                    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-                    messages: [
-                        {
-                            role: 'user',
-                            content: [
-                                {
-                                    type: 'text',
-                                    text: `Analyze this receipt image and extract:
-1. Total amount (just the final amount paid)
-2. Store/vendor name or type of purchase
-3. Best category from this list: Food, Travel, Shopping, Bills, Health, Education, Entertainment, Other
-4. Date if visible (format YYYY-MM-DD), otherwise leave empty
-
-Respond ONLY in this exact JSON format, nothing else:
-{
-  "amount": 250.00,
-  "description": "Swiggy food order",
-  "category": "Food",
-  "date": "2026-05-15"
-}`
-                                },
-                                {
-                                    type: 'image_url',
-                                    image_url: {
-                                        url: `data:image/jpeg;base64,${base64Image}`
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    max_tokens: 200
-                })
+                body: JSON.stringify({ image: base64Image })
             });
 
             if (!response.ok) throw new Error("API request failed");
 
             const data = await response.json();
-            const content = data.choices[0].message.content.trim();
-            
+            const content = data.content.trim();
+
             const jsonStr = content.substring(content.indexOf('{'), content.lastIndexOf('}') + 1);
             const result = JSON.parse(jsonStr);
 
@@ -660,12 +623,12 @@ Respond ONLY in this exact JSON format, nothing else:
             }
             if (result.date) document.getElementById('add-date').value = result.date;
 
-            statusDiv.textContent = 'âœ… Receipt scanned! Please review and save.';
+            statusDiv.textContent = '✅ Receipt scanned! Please review and save.';
             statusDiv.style.color = 'var(--income)';
 
         } catch (error) {
             console.error("Receipt scan error:", error);
-            statusDiv.textContent = 'âŒ Could not read receipt. Please fill manually.';
+            statusDiv.textContent = '❌ Could not read receipt. Please fill manually.';
             statusDiv.style.color = 'var(--expense)';
         }
     };
@@ -676,29 +639,29 @@ Respond ONLY in this exact JSON format, nothing else:
 function generatePDF(title, filteredTransactions) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
     doc.setTextColor(45, 106, 79);
     doc.text("Expense Manager Lite", 14, 20);
-    
+
     doc.setFontSize(14);
     doc.setTextColor(100, 100, 100);
     doc.text(title, 14, 28);
-    
+
     let tIncome = 0;
     let tExpense = 0;
     filteredTransactions.forEach(t => {
         if (t.type === 'income') tIncome += t.amount;
         else tExpense += t.amount;
     });
-    
+
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
     doc.text(`Total Income: ${formatCurrency(tIncome)}`, 14, 40);
     doc.text(`Total Expenses: ${formatCurrency(tExpense)}`, 80, 40);
     doc.text(`Net Balance: ${formatCurrency(tIncome - tExpense)}`, 150, 40);
-    
+
     const tableData = filteredTransactions.map(t => [
         t.date,
         t.desc,
@@ -706,14 +669,14 @@ function generatePDF(title, filteredTransactions) {
         t.type === 'income' ? 'Income' : 'Expense',
         formatCurrency(t.amount)
     ]);
-    
+
     doc.autoTable({
         startY: 50,
         head: [['Date', 'Description', 'Category', 'Type', 'Amount']],
         body: tableData,
         headStyles: { fillColor: [45, 106, 79] },
         alternateRowStyles: { fillColor: [247, 246, 243] },
-        didParseCell: function(data) {
+        didParseCell: function (data) {
             if (data.section === 'body' && data.column.index === 4) {
                 if (data.row.raw[3] === 'Income') {
                     data.cell.styles.textColor = [45, 106, 79];
@@ -723,7 +686,7 @@ function generatePDF(title, filteredTransactions) {
             }
         }
     });
-    
+
     const expenses = filteredTransactions.filter(t => t.type === 'expense');
     const catMap = {};
     expenses.forEach(t => {
@@ -731,14 +694,14 @@ function generatePDF(title, filteredTransactions) {
         catMap[t.category].count += 1;
         catMap[t.category].amount += t.amount;
     });
-    
+
     const catData = Object.keys(catMap).map(cat => [
         cat,
         catMap[cat].count.toString(),
         formatCurrency(catMap[cat].amount),
         tExpense > 0 ? ((catMap[cat].amount / tExpense) * 100).toFixed(1) + '%' : '0%'
     ]);
-    
+
     if (catData.length > 0) {
         doc.autoTable({
             startY: doc.lastAutoTable.finalY + 15,
@@ -747,7 +710,7 @@ function generatePDF(title, filteredTransactions) {
             headStyles: { fillColor: [45, 106, 79] }
         });
     }
-    
+
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
@@ -756,7 +719,7 @@ function generatePDF(title, filteredTransactions) {
         doc.text(`Generated on ${new Date().toLocaleDateString()} by Expense Manager Lite`, 14, doc.internal.pageSize.height - 10);
         doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 25, doc.internal.pageSize.height - 10);
     }
-    
+
     return doc;
 }
 
@@ -764,14 +727,14 @@ function downloadMonthlyPDF() {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
-    
+
     const filtered = transactions.filter(t => {
         const tDate = new Date(t.date);
         return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
     });
-    
+
     const monthName = now.toLocaleString('default', { month: 'long' });
-    const doc = generatePDF(`Expense Manager Lite â€” Monthly Report (${monthName} ${currentYear})`, filtered);
+    const doc = generatePDF(`Expense Manager Lite — Monthly Report (${monthName} ${currentYear})`, filtered);
     doc.save(`EMLite-Monthly-${monthName.replace(/\s+/g, '')}${currentYear}.pdf`);
 }
 
@@ -779,14 +742,14 @@ function downloadWeeklyPDF() {
     const now = new Date();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(now.getDate() - 7);
-    
+
     const filtered = transactions.filter(t => {
         const tDate = new Date(t.date);
         return tDate >= sevenDaysAgo && tDate <= now;
     });
-    
+
     const doc = generatePDF(`Week of ${sevenDaysAgo.toLocaleDateString()} to ${now.toLocaleDateString()}`, filtered);
-    
+
     const dateStr = now.toLocaleDateString('en-GB').replace(/\//g, '');
     doc.save(`EMLite-Weekly-${dateStr}.pdf`);
 }
