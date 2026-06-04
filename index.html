@@ -43,8 +43,9 @@
           data-callback="handleGoogleLogin"
           data-auto_prompt="false">
         </div>
-        <button type="button" class="google-btn" onclick="document.querySelector('.g_id_signin div[role=button]').click();">
-          <img src="https://www.google.com/favicon.ico" width="18" height="18">
+        <div id="google-btn-container" style="width:100%; margin-top:8px;"></div>
+        <button type="button" class="google-btn" onclick="triggerGoogleLogin()">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" height="20">
           Continue with Google
         </button>
         <div class="auth-footer">

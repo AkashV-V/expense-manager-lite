@@ -880,23 +880,72 @@ function downloadWeeklyPDF() {
 }
 
 // Bootstrap
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', function() {
+    init();
+});
+
+let googleInitialized = false;
+
+function initializeGoogle() {
+  if (googleInitialized) return;
+  if (typeof google === 'undefined') return;
+  
+  google.accounts.id.initialize({
+    client_id: '700680803344-ajg758rmkno6kr521pbkre7k6pvap0ik.apps.googleusercontent.com',
+    callback: handleGoogleLogin
+  });
+  
+  googleInitialized = true;
+}
+
+// Call only once when page loads
+window.addEventListener('load', initializeGoogle);
+
+function triggerGoogleLogin() {
+  try {
+    if (typeof google !== 'undefined' && 
+        google.accounts && 
+        google.accounts.id) {
+      google.accounts.id.prompt(function(notification) {
+        if (notification.isNotDisplayed() || 
+            notification.isSkippedMoment()) {
+          // Fallback: render button manually
+          google.accounts.id.renderButton(
+            document.getElementById('google-btn-container'),
+            { 
+              theme: 'outline', 
+              size: 'large',
+              width: '100%'
+            }
+          );
+        }
+      });
+    } else {
+      showToast('Google login is initializing, please try again in a moment');
+    }
+  } catch(err) {
+    console.error('Google trigger error:', err);
+    showToast('Google login unavailable');
+  }
+}
 
 async function handleGoogleLogin(response) {
-    const credential = response.credential;
-    const payload = JSON.parse(atob(credential.split('.')[1]));
-    
-    const googleUser = {
-      fullName: payload.name,
-      email: payload.email,
-      googleId: payload.sub,
-      authProvider: 'google'
-    };
-    
     try {
+        const credential = response.credential;
+        const payload = JSON.parse(atob(credential.split('.')[1]));
+        
+        const googleUser = {
+            fullName: payload.name,
+            email: payload.email,
+            googleId: payload.sub,
+            authProvider: 'google'
+        };
+        
         const res = await fetch(`${API_URL}/auth/google`, {
             method: 'POST',
-            headers: {'Content-Type':'application/json'},
+            headers: {
+                'Content-Type': 'application/json'
+            },
             body: JSON.stringify(googleUser)
         });
         const data = await res.json();
@@ -908,11 +957,12 @@ async function handleGoogleLogin(response) {
             localStorage.setItem('emlite_current_user', JSON.stringify(data.user));
             document.getElementById('auth-page').style.display = 'none';
             checkAuth();
-            showToast('Logged in with Google!');
+            showToast('Welcome ' + data.user.fullName);
         } else {
-            showToast('Google login failed');
+            showAuthError('login-error', data.message || 'Google login failed');
         }
     } catch (err) {
-        showToast('Server error during Google login');
+        console.error('Google login error:', err);
+        showAuthError('login-error', 'Google login failed. Try again.');
     }
 }
