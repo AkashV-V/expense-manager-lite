@@ -11,6 +11,9 @@ const expenseCategories = ['Food', 'Travel', 'Shopping', 'Bills', 'Health', 'Edu
 let transactions = [];
 let currentType = 'expense';
 let chatHistory = [];
+let currentPage = 1;
+const itemsPerPage = 10;
+let editId = null;
 
 // Initialize App
 function init() {
@@ -90,14 +93,14 @@ function showAuthError(elementId, message) {
 
 async function handleLogin(e) {
     e.preventDefault();
-    const username = document.getElementById('login-username').value.trim();
+    const identifier = document.getElementById('login-identifier').value.trim();
     const password = document.getElementById('login-password').value;
 
     try {
         const res = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            body: JSON.stringify({ identifier, password })
         });
         const data = await res.json();
         if (!res.ok) {
@@ -121,7 +124,8 @@ async function handleLogin(e) {
 async function handleRegister(e) {
     e.preventDefault();
     const fullName = document.getElementById('reg-fullname').value.trim();
-    const username = document.getElementById('reg-username').value.trim();
+    const email = document.getElementById('reg-email').value.trim();
+    const mobile = document.getElementById('reg-mobile').value.trim();
     const password = document.getElementById('reg-password').value;
     const confirmPassword = document.getElementById('reg-confirm').value;
 
@@ -133,7 +137,7 @@ async function handleRegister(e) {
         const res = await fetch(`${API_URL}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fullName, username, password })
+            body: JSON.stringify({ fullName, email, mobile, password })
         });
         const data = await res.json();
         if (!res.ok) {
@@ -348,15 +352,23 @@ function updateHistory() {
     // Sort is not strictly needed if backend returns them sorted, but to be safe:
     filtered.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
 
+    // Pagination
+    const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    const paginated = filtered.slice(startIdx, startIdx + itemsPerPage);
+
     const tbody = document.getElementById('history-tbody');
     const emptyState = document.getElementById('history-empty');
     tbody.innerHTML = '';
 
     if (filtered.length === 0) {
         emptyState.style.display = 'flex';
+        document.getElementById('pagination-bar').style.display = 'none';
     } else {
         emptyState.style.display = 'none';
-        filtered.forEach(t => {
+        document.getElementById('pagination-bar').style.display = 'flex';
+        paginated.forEach(t => {
             tbody.innerHTML += `
           <tr>
             <td><div style="font-weight: 500;">${t.desc}</div></td>
@@ -364,11 +376,103 @@ function updateHistory() {
             <td style="color: var(--muted); font-size: 13px;">${t.date}</td>
             <td class="amount-cell ${t.type}">${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}</td>
             <td style="text-align: center;">
+              <button class="btn btn-outline" style="padding: 6px 12px; margin-right: 8px;" onclick="openEditModal('${t._id}')">Edit</button>
               <button class="btn btn-danger" onclick="deleteTransaction('${t._id}')">Delete</button>
             </td>
           </tr>
         `;
         });
+    }
+
+    // Update pagination UI
+    document.getElementById('page-info').textContent = `Page ${currentPage} of ${totalPages} (${filtered.length} transactions)`;
+    document.getElementById('btn-prev').disabled = currentPage === 1;
+    document.getElementById('btn-next').disabled = currentPage === totalPages;
+}
+
+function prevPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        updateHistory();
+    }
+}
+
+function nextPage() {
+    currentPage++;
+    updateHistory();
+}
+
+async function openEditModal(id) {
+    const t = transactions.find(tx => tx._id === id);
+    if (!t) return;
+    editId = id;
+    
+    setEditType(t.type);
+    document.getElementById('edit-amount').value = t.amount;
+    document.getElementById('edit-date').value = t.date;
+    document.getElementById('edit-category').value = t.category;
+    document.getElementById('edit-desc').value = t.desc;
+    
+    document.getElementById('edit-modal').style.display = 'block';
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').style.display = 'none';
+    editId = null;
+}
+
+function setEditType(type) {
+    document.getElementById('edit-btn-expense').classList.toggle('active', type === 'expense');
+    document.getElementById('edit-btn-income').classList.toggle('active', type === 'income');
+    
+    const select = document.getElementById('edit-category');
+    select.innerHTML = '';
+    const cats = type === 'income' ? incomeCategories : expenseCategories;
+    cats.forEach(c => {
+        select.innerHTML += `<option value="${c}">${c}</option>`;
+    });
+}
+
+async function saveEdit() {
+    if (!editId) return;
+    
+    const isExpense = document.getElementById('edit-btn-expense').classList.contains('active');
+    const type = isExpense ? 'expense' : 'income';
+    const amount = parseFloat(document.getElementById('edit-amount').value);
+    const date = document.getElementById('edit-date').value;
+    const category = document.getElementById('edit-category').value;
+    const desc = document.getElementById('edit-desc').value.trim();
+
+    if (!amount || amount <= 0 || !date || !category || !desc) {
+        alert('Please fill all fields correctly.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/transactions/${editId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ type, amount, date, category, desc })
+        });
+        
+        if (res.ok) {
+            const updatedTxn = await res.json();
+            const idx = transactions.findIndex(t => t._id === editId);
+            if (idx !== -1) {
+                transactions[idx] = updatedTxn;
+            }
+            closeEditModal();
+            updateHistory();
+            updateDashboard();
+            showToast('Transaction updated!');
+        } else {
+            showToast('Error updating transaction');
+        }
+    } catch (err) {
+        showToast('Error updating transaction');
     }
 }
 
@@ -403,7 +507,17 @@ function updateReports() {
     const donutExpense = document.getElementById('donut-expense');
 
     const total = totalIncome + totalExpense;
+    
+    const donutCenterText = document.getElementById('donut-center-text');
+    document.getElementById('legend-income').textContent = formatCurrency(totalIncome);
+    document.getElementById('legend-expense').textContent = formatCurrency(totalExpense);
+
     if (total > 0) {
+        donutCenterText.innerHTML = `
+          <div class="income-text">₹${totalIncome.toFixed(2)}</div>
+          <div class="vs-text">vs</div>
+          <div class="expense-text">₹${totalExpense.toFixed(2)}</div>
+        `;
         const incomePercent = (totalIncome / total) * 100;
         const expensePercent = (totalExpense / total) * 100;
 
@@ -472,6 +586,17 @@ function updateReports() {
         </div>
       `;
     });
+
+    const tfoot = document.getElementById('breakdown-tfoot');
+    if (expenses.length > 0) {
+        tfoot.innerHTML = `<tr>
+          <td colspan="2">TOTAL</td>
+          <td class="right-align" style="font-family: var(--font-mono); color: var(--expense);">${formatCurrency(totalExpense)}</td>
+          <td class="right-align">100.0%</td>
+        </tr>`;
+    } else {
+        tfoot.innerHTML = '';
+    }
 }
 
 // AI Assistant Logic (Groq API)
@@ -756,3 +881,38 @@ function downloadWeeklyPDF() {
 
 // Bootstrap
 document.addEventListener('DOMContentLoaded', init);
+
+async function handleGoogleLogin(response) {
+    const credential = response.credential;
+    const payload = JSON.parse(atob(credential.split('.')[1]));
+    
+    const googleUser = {
+      fullName: payload.name,
+      email: payload.email,
+      googleId: payload.sub,
+      authProvider: 'google'
+    };
+    
+    try {
+        const res = await fetch(`${API_URL}/auth/google`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(googleUser)
+        });
+        const data = await res.json();
+        
+        if (data.token) {
+            authToken = data.token;
+            currentUser = data.user;
+            localStorage.setItem('emlite_token', data.token);
+            localStorage.setItem('emlite_current_user', JSON.stringify(data.user));
+            document.getElementById('auth-page').style.display = 'none';
+            checkAuth();
+            showToast('Logged in with Google!');
+        } else {
+            showToast('Google login failed');
+        }
+    } catch (err) {
+        showToast('Server error during Google login');
+    }
+}

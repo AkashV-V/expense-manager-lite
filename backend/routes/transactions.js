@@ -54,6 +54,33 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
+// PUT edit transaction
+router.put('/:id', auth, async (req, res) => {
+  try {
+    const { type, amount, date, category, desc } = req.body;
+    
+    const transaction = await Transaction.findOne({
+      _id: req.params.id,
+      userId: req.user.id
+    });
+    
+    if (!transaction) {
+      return res.status(404).json({ message: 'Transaction not found' });
+    }
+    
+    transaction.type = type;
+    transaction.amount = amount;
+    transaction.date = date;
+    transaction.category = category;
+    transaction.desc = desc;
+    
+    await transaction.save();
+    res.json(transaction);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // GET summary
 router.get('/summary', auth, async (req, res) => {
   try {
