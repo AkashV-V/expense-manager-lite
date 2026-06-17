@@ -25,17 +25,25 @@ function checkAuth() {
     const savedToken = localStorage.getItem('emlite_token');
     const savedUser = localStorage.getItem('emlite_current_user');
 
+    document.getElementById('auth-page').style.display = 'none';
+    document.getElementById('sidebar').style.display = 'flex';
+    document.getElementById('main-content').style.display = 'block';
+
+    const userActions = document.querySelector('.user-actions');
+
     if (savedToken && savedUser) {
         // User logged in
         authToken = savedToken;
         currentUser = JSON.parse(savedUser);
 
-        document.getElementById('auth-page').style.display = 'none';
-        document.getElementById('sidebar').style.display = 'flex';
-        document.getElementById('main-content').style.display = 'block';
-
         document.getElementById('sidebar-welcome').textContent = `Welcome, ${currentUser.fullName.split(' ')[0]}`;
-        document.getElementById('topbar-fullname').textContent = currentUser.fullName;
+        
+        if (userActions) {
+            userActions.innerHTML = `
+                <span id="topbar-fullname" style="font-weight: 500; margin-right: 16px;">${currentUser.fullName}</span>
+                <button class="btn btn-danger" onclick="handleLogout()" style="padding: 6px 12px;">Logout</button>
+            `;
+        }
 
         // Initialize app data
         setAddType('expense');
@@ -46,14 +54,35 @@ function checkAuth() {
             navigateTo('dashboard');
         });
     } else {
-        // No user logged in
-        document.getElementById('auth-page').style.display = 'flex';
-        document.getElementById('sidebar').style.display = 'none';
-        document.getElementById('main-content').style.display = 'none';
+        // Guest mode - No user logged in
+        authToken = null;
+        currentUser = null;
+
+        document.getElementById('sidebar-welcome').textContent = 'Welcome, Guest';
+        
+        if (userActions) {
+            userActions.innerHTML = `
+                <span id="topbar-fullname" style="font-weight: 500; margin-right: 16px; color: var(--muted);">Guest Mode</span>
+                <button class="btn btn-primary" onclick="showLoginModal()" style="padding: 6px 12px; font-size: 13px;">Login</button>
+            `;
+        }
+
+        // Initialize app data
+        setAddType('expense');
+        document.getElementById('add-date').value = new Date().toISOString().split('T')[0];
+        populateCategoryFilter();
+
+        loadTransactions().then(() => {
+            navigateTo('dashboard');
+        });
     }
 }
 
 async function loadTransactions() {
+    if (!authToken) {
+        loadGuestTransactions();
+        return;
+    }
     try {
         const res = await fetch(`${API_URL}/transactions`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
@@ -62,6 +91,35 @@ async function loadTransactions() {
     } catch (err) {
         console.error('Failed to load transactions:', err);
     }
+}
+
+function loadGuestTransactions() {
+    const localData = localStorage.getItem('emlite_guest_transactions');
+    if (localData) {
+        transactions = JSON.parse(localData);
+    } else {
+        // Pre-populate with beautiful mock transactions
+        transactions = [
+            { _id: 'g1', type: 'income', amount: 55000, date: new Date().toISOString().split('T')[0], category: 'Salary', desc: 'Monthly Salary' },
+            { _id: 'g2', type: 'expense', amount: 4200, date: new Date().toISOString().split('T')[0], category: 'Shopping', desc: 'New Sneakers' },
+            { _id: 'g3', type: 'expense', amount: 850, date: new Date().toISOString().split('T')[0], category: 'Food', desc: 'Sushi Dinner' },
+            { _id: 'g4', type: 'expense', amount: 2300, date: new Date().toISOString().split('T')[0], category: 'Bills', desc: 'Wi-Fi & Mobile bills' },
+            { _id: 'g5', type: 'income', amount: 7500, date: new Date().toISOString().split('T')[0], category: 'Freelance', desc: 'Logo Design Project' }
+        ];
+        saveGuestTransactions();
+    }
+}
+
+function saveGuestTransactions() {
+    localStorage.setItem('emlite_guest_transactions', JSON.stringify(transactions));
+}
+
+function showLoginModal() {
+    document.getElementById('auth-page').style.display = 'flex';
+}
+
+function closeAuthPage() {
+    document.getElementById('auth-page').style.display = 'none';
 }
 
 function toggleAuth(type) {
@@ -300,6 +358,29 @@ async function handleAdd(e) {
         return;
     }
 
+    if (!authToken) {
+        const newTxn = {
+            _id: 'g_' + Date.now(),
+            type: currentType,
+            amount,
+            date,
+            category,
+            desc,
+            createdAt: new Date().toISOString()
+        };
+        transactions.unshift(newTxn);
+        saveGuestTransactions();
+        updateDashboard();
+
+        // Reset Form
+        document.getElementById('add-form').reset();
+        document.getElementById('add-date').value = new Date().toISOString().split('T')[0];
+        setAddType('expense');
+
+        showToast('Transaction added successfully!');
+        return;
+    }
+
     try {
         const res = await fetch(`${API_URL}/transactions`, {
             method: 'POST',
@@ -448,6 +529,26 @@ async function saveEdit() {
         return;
     }
 
+    if (!authToken) {
+        const idx = transactions.findIndex(t => t._id === editId);
+        if (idx !== -1) {
+            transactions[idx] = {
+                ...transactions[idx],
+                type,
+                amount,
+                date,
+                category,
+                desc
+            };
+            saveGuestTransactions();
+            closeEditModal();
+            updateHistory();
+            updateDashboard();
+            showToast('Transaction updated!');
+        }
+        return;
+    }
+
     try {
         const res = await fetch(`${API_URL}/transactions/${editId}`, {
             method: 'PUT',
@@ -478,6 +579,14 @@ async function saveEdit() {
 
 async function deleteTransaction(id) {
     if (confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
+        if (!authToken) {
+            transactions = transactions.filter(t => t._id !== id);
+            saveGuestTransactions();
+            updateHistory();
+            updateDashboard();
+            showToast('Transaction deleted');
+            return;
+        }
         try {
             const res = await fetch(`${API_URL}/transactions/${id}`, {
                 method: 'DELETE',
@@ -621,6 +730,19 @@ async function sendChatMessage() {
     appendMessage('user', text);
     input.value = '';
 
+    if (!authToken) {
+        const typing = document.getElementById('typing-indicator');
+        typing.classList.add('show');
+        scrollToBottom();
+        setTimeout(() => {
+            typing.classList.remove('show');
+            appendMessage('ai', 'Please log in or register to use the AI Financial Assistant.');
+            showToast('Authentication required for AI assistant.');
+            showLoginModal();
+        }, 1000);
+        return;
+    }
+
     // Show typing indicator
     const typing = document.getElementById('typing-indicator');
     typing.classList.add('show');
@@ -704,6 +826,12 @@ function scrollToBottom() {
 
 // Receipt Scanner Logic
 function handleReceiptScan(event) {
+    if (!authToken) {
+        showToast('Authentication required for AI receipt scanning.');
+        showLoginModal();
+        event.target.value = '';
+        return;
+    }
     const file = event.target.files[0];
     if (!file) return;
 
