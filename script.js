@@ -892,7 +892,8 @@ function initializeGoogle() {
   
   google.accounts.id.initialize({
     client_id: '700680803344-ajg758rmkno6kr521pbkre7k6pvap0ik.apps.googleusercontent.com',
-    callback: handleGoogleLogin
+    callback: handleGoogleLogin,
+    auto_select: false
   });
   
   googleInitialized = true;
@@ -906,20 +907,7 @@ function triggerGoogleLogin() {
     if (typeof google !== 'undefined' && 
         google.accounts && 
         google.accounts.id) {
-      google.accounts.id.prompt(function(notification) {
-        if (notification.isNotDisplayed() || 
-            notification.isSkippedMoment()) {
-          // Fallback: render button manually
-          google.accounts.id.renderButton(
-            document.getElementById('google-btn-container'),
-            { 
-              theme: 'outline', 
-              size: 'large',
-              width: '100%'
-            }
-          );
-        }
-      });
+      google.accounts.id.prompt();
     } else {
       showToast('Google login is initializing, please try again in a moment');
     }
