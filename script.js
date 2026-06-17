@@ -159,6 +159,32 @@ function handleLogout() {
     checkAuth();
 }
 
+// Google OAuth Login
+async function handleGoogleLogin(googleResponse) {
+    try {
+        const res = await fetch(`${API_URL}/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: googleResponse.credential })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showAuthError('login-error', data.message || 'Google login failed');
+            return;
+        }
+
+        authToken = data.token;
+        currentUser = data.user;
+        localStorage.setItem('emlite_token', data.token);
+        localStorage.setItem('emlite_current_user', JSON.stringify(data.user));
+
+        showAuthError('login-error', '');
+        checkAuth();
+    } catch (err) {
+        showAuthError('login-error', 'Server error. Is backend running?');
+    }
+}
+
 // Navigation Logic
 function navigateTo(pageId) {
     // Hide all pages

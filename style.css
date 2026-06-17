@@ -839,6 +839,29 @@ th.right-align {
     text-decoration: none;
 }
 
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0 16px;
+    color: #7a7670;
+    font-size: 13px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #e8e5df;
+}
+
+/* Center the Google Sign-In button */
+.auth-card .g_id_signin {
+    display: flex;
+    justify-content: center;
+}
+
 .error-msg {
     color: #c0392b;
     font-size: 13px;
