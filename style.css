@@ -857,7 +857,9 @@ th.right-align {
 }
 
 /* Center the Google Sign-In button */
-.auth-card .g_id_signin {
+.auth-card .g_id_signin,
+.auth-card #google-signin-btn-login,
+.auth-card #google-signin-btn-register {
     display: flex;
     justify-content: center;
 }

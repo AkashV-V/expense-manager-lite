@@ -15,6 +15,11 @@ let chatHistory = [];
 // Initialize App
 function init() {
     checkAuth();
+    if (typeof google !== 'undefined') {
+        initGoogleSignIn();
+    } else {
+        window.addEventListener('load', initGoogleSignIn);
+    }
 }
 
 // Auth Logic
@@ -160,7 +165,41 @@ function handleLogout() {
 }
 
 // Google OAuth Login
+function initGoogleSignIn() {
+    if (typeof google !== 'undefined') {
+        google.accounts.id.initialize({
+            client_id: "700680803344-78dekcnvifam7vnv4ui0jo3u411dgkc5.apps.googleusercontent.com",
+            callback: handleGoogleLogin
+        });
+
+        const loginBtn = document.getElementById("google-signin-btn-login");
+        if (loginBtn) {
+            google.accounts.id.renderButton(loginBtn, {
+                theme: "filled_black",
+                size: "large",
+                text: "continue_with",
+                width: 340
+            });
+        }
+
+        const regBtn = document.getElementById("google-signin-btn-register");
+        if (regBtn) {
+            google.accounts.id.renderButton(regBtn, {
+                theme: "filled_black",
+                size: "large",
+                text: "continue_with",
+                width: 340
+            });
+        }
+    } else {
+        console.warn("Google API client not loaded. Cannot initialize Google Sign-in.");
+    }
+}
+
 async function handleGoogleLogin(googleResponse) {
+    const isRegister = document.getElementById('register-card').style.display !== 'none';
+    const activeErrorId = isRegister ? 'register-error' : 'login-error';
+
     try {
         const res = await fetch(`${API_URL}/auth/google`, {
             method: 'POST',
@@ -169,7 +208,7 @@ async function handleGoogleLogin(googleResponse) {
         });
         const data = await res.json();
         if (!res.ok) {
-            showAuthError('login-error', data.message || 'Google login failed');
+            showAuthError(activeErrorId, data.message || 'Google login failed');
             return;
         }
 
@@ -179,9 +218,10 @@ async function handleGoogleLogin(googleResponse) {
         localStorage.setItem('emlite_current_user', JSON.stringify(data.user));
 
         showAuthError('login-error', '');
+        showAuthError('register-error', '');
         checkAuth();
     } catch (err) {
-        showAuthError('login-error', 'Server error. Is backend running?');
+        showAuthError(activeErrorId, 'Server error. Is backend running?');
     }
 }
 
