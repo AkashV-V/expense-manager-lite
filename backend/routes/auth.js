@@ -57,6 +57,9 @@ router.post('/google', async (req, res) => {
 
   } catch (err) {
     console.error('Google auth error:', err);
+    if (err.name?.includes('Mongo') || err.name?.includes('Mongoose') || err.message?.includes('buffering timed out')) {
+      return res.status(500).json({ message: 'Database connection error. Please check backend MongoDB logs.' });
+    }
     res.status(401).json({ message: 'Invalid Google token' });
   }
 });
