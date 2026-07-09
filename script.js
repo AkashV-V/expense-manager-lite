@@ -39,6 +39,12 @@ function checkAuth() {
         document.getElementById('sidebar-welcome').textContent = `Welcome, ${currentUser.fullName.split(' ')[0]}`;
         document.getElementById('topbar-fullname').textContent = currentUser.fullName;
 
+        const authBtn = document.getElementById('topbar-auth-btn');
+        if (authBtn) {
+            authBtn.textContent = 'Logout';
+            authBtn.className = 'btn btn-danger';
+        }
+
         // Initialize app data
         setAddType('expense');
         document.getElementById('add-date').value = new Date().toISOString().split('T')[0];
@@ -48,10 +54,30 @@ function checkAuth() {
             navigateTo('dashboard');
         });
     } else {
-        // No user logged in
-        document.getElementById('auth-page').style.display = 'flex';
-        document.getElementById('sidebar').style.display = 'none';
-        document.getElementById('main-content').style.display = 'none';
+        // Guest mode
+        authToken = null;
+        currentUser = null;
+        transactions = [];
+
+        document.getElementById('auth-page').style.display = 'none';
+        document.getElementById('sidebar').style.display = 'flex';
+        document.getElementById('main-content').style.display = 'block';
+
+        document.getElementById('sidebar-welcome').textContent = `Welcome, Guest`;
+        document.getElementById('topbar-fullname').textContent = 'Guest';
+
+        const authBtn = document.getElementById('topbar-auth-btn');
+        if (authBtn) {
+            authBtn.textContent = 'Login';
+            authBtn.className = 'btn btn-primary';
+        }
+
+        // Initialize empty dashboard
+        setAddType('expense');
+        document.getElementById('add-date').value = new Date().toISOString().split('T')[0];
+        populateCategoryFilter();
+        updateDashboard();
+        navigateTo('dashboard');
     }
 }
 
@@ -127,6 +153,7 @@ async function handleRegister(e) {
     e.preventDefault();
     const fullName = document.getElementById('reg-fullname').value.trim();
     const username = document.getElementById('reg-username').value.trim();
+    const mobileNumber = document.getElementById('reg-mobile').value.trim();
     const password = document.getElementById('reg-password').value;
     const confirmPassword = document.getElementById('reg-confirm').value;
 
@@ -138,7 +165,7 @@ async function handleRegister(e) {
         const res = await fetch(`${API_URL}/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fullName, username, password })
+            body: JSON.stringify({ fullName, username, password, mobileNumber })
         });
         const data = await res.json();
         if (!res.ok) {
@@ -162,6 +189,22 @@ function handleLogout() {
     document.getElementById('login-form').reset();
     toggleAuth('login');
     checkAuth();
+}
+
+function handleAuthActionButton() {
+    if (currentUser) {
+        handleLogout();
+    } else {
+        document.getElementById('auth-page').style.display = 'flex';
+        toggleAuth('login');
+    }
+}
+
+function closeAuthModal() {
+    document.getElementById('auth-page').style.display = 'none';
+    showAuthError('login-error', '');
+    showAuthError('register-error', '');
+    navigateTo('dashboard');
 }
 
 // Google OAuth Login
@@ -227,6 +270,13 @@ async function handleGoogleLogin(googleResponse) {
 
 // Navigation Logic
 function navigateTo(pageId) {
+    if (pageId !== 'dashboard' && !currentUser) {
+        document.getElementById('auth-page').style.display = 'flex';
+        toggleAuth('login');
+        showAuthError('login-error', 'Please login to access this section.');
+        return;
+    }
+
     // Hide all pages
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     // Remove active class from nav links
@@ -234,7 +284,11 @@ function navigateTo(pageId) {
 
     // Show target page
     document.getElementById(pageId).classList.add('active');
-    document.querySelector(`.nav-link[data-target="${pageId}"]`).classList.add('active');
+    
+    const activeLink = document.querySelector(`.nav-link[data-target="${pageId}"]`);
+    if (activeLink) {
+        activeLink.classList.add('active');
+    }
 
     // Update Title
     const titles = {
@@ -243,7 +297,7 @@ function navigateTo(pageId) {
         history: 'Transaction History',
         reports: 'Reports & Summary'
     };
-    document.getElementById('page-title').textContent = titles[pageId];
+    document.getElementById('page-title').textContent = titles[pageId] || 'Expense Manager Lite';
 
     // Close sidebar on mobile
     if (window.innerWidth <= 768) {
@@ -542,6 +596,12 @@ function updateReports() {
 
 // AI Assistant Logic (Groq API)
 function toggleChat() {
+    if (!currentUser) {
+        document.getElementById('auth-page').style.display = 'flex';
+        toggleAuth('login');
+        showAuthError('login-error', 'Please login to use the AI Assistant.');
+        return;
+    }
     const panel = document.getElementById('chat-panel');
     panel.classList.toggle('open');
 

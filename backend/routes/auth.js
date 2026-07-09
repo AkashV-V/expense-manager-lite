@@ -67,12 +67,22 @@ router.post('/google', async (req, res) => {
 // REGISTER
 router.post('/register', async (req, res) => {
   try {
-    const { fullName, username, password } = req.body;
+    const { fullName, username, password, mobileNumber } = req.body;
+
+    if (!mobileNumber) {
+      return res.status(400).json({ message: 'Mobile number is required' });
+    }
 
     // Check if user exists
     const existingUser = await User.findOne({ username: username.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({ message: 'Username already taken' });
+    }
+
+    // Check if mobile number exists
+    const existingMobile = await User.findOne({ mobileNumber });
+    if (existingMobile) {
+      return res.status(400).json({ message: 'Mobile number already registered' });
     }
 
     // Hash password
@@ -83,7 +93,8 @@ router.post('/register', async (req, res) => {
     const user = new User({
       fullName,
       username: username.toLowerCase(),
-      password: hashedPassword
+      password: hashedPassword,
+      mobileNumber
     });
 
     await user.save();
@@ -99,8 +110,13 @@ router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ username: username.toLowerCase() });
+    // Find user by username or mobileNumber
+    const user = await User.findOne({
+      $or: [
+        { username: username.toLowerCase() },
+        { mobileNumber: username }
+      ]
+    });
     if (!user) {
       return res.status(400).json({ message: 'Invalid username or password' });
     }
