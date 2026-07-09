@@ -168,7 +168,7 @@ function handleLogout() {
 function initGoogleSignIn() {
     if (typeof google !== 'undefined') {
         google.accounts.id.initialize({
-            client_id: "700680803344-78dekcnvifam7vnv4ui0jo3u411dgkc5.apps.googleusercontent.com",
+            client_id: "5510604688-ome7np9c7sndt1ra35lvvtjuqd50gjl9.apps.googleusercontent.com",
             callback: handleGoogleLogin
         });
 
