@@ -517,6 +517,10 @@ async function deleteTransaction(id) {
 function updateReports() {
     const { totalIncome, totalExpense } = calculateStats();
 
+    // Update legend amounts
+    document.getElementById('legend-income-amount').textContent = formatCurrency(totalIncome);
+    document.getElementById('legend-expense-amount').textContent = formatCurrency(totalExpense);
+
     // Update SVG Donut Chart (Pure SVG)
     // Note: The SVG is rotated -90deg so offset 0 is at 12 o'clock
     const donutIncome = document.getElementById('donut-income');
