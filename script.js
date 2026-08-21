@@ -654,7 +654,11 @@ function toggleChat() {
         return;
     }
     const panel = document.getElementById('chat-panel');
+    const chatBtn = document.querySelector('.chat-btn');
     panel.classList.toggle('open');
+    if (chatBtn) {
+        chatBtn.classList.toggle('hidden', panel.classList.contains('open'));
+    }
 
     // Focus input if opening
     if (panel.classList.contains('open')) {
