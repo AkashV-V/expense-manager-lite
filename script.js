@@ -1,6 +1,8 @@
 
 let currentUser = null;
-const API_URL = 'https://expense-manager-backend-jwfj.onrender.com/api';
+const API_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || !window.location.hostname)
+    ? 'http://localhost:5000/api'
+    : 'https://expense-manager-backend-jwfj.onrender.com/api';
 let authToken = localStorage.getItem('emlite_token') || null;
 const API_KEY = "YOUR_GROQ_API_KEY";
 

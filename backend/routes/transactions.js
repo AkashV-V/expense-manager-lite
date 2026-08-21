@@ -106,7 +106,7 @@ Keep responses under 100 words unless detailed analysis is requested.`;
         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: 'groq/compound',
         messages,
         max_tokens: 300
       })
@@ -115,7 +115,7 @@ Keep responses under 100 words unless detailed analysis is requested.`;
     if (!response.ok) {
       const errorData = await response.json();
       console.error('Groq API Error:', errorData);
-      return res.status(500).json({ message: 'Error from AI service' });
+      return res.status(500).json({ message: errorData?.error?.message || 'Error from AI service' });
     }
 
     const data = await response.json();
@@ -142,7 +142,7 @@ router.post('/scan', auth, async (req, res) => {
         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        model: 'qwen/qwen3.6-27b',
         messages: [
           {
             role: 'user',
@@ -179,7 +179,7 @@ Respond ONLY in this exact JSON format, nothing else:
     if (!response.ok) {
       const errorData = await response.json();
       console.error('Groq API Error:', errorData);
-      return res.status(500).json({ message: 'Error from AI service' });
+      return res.status(500).json({ message: errorData?.error?.message || 'Error from AI service' });
     }
 
     const data = await response.json();
