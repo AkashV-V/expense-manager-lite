@@ -51,7 +51,9 @@ function checkAuth() {
         populateCategoryFilter();
 
         loadTransactions().then(() => {
-            navigateTo('dashboard');
+            if (currentUser) {
+                navigateTo('dashboard');
+            }
         });
     } else {
         // Guest mode
@@ -86,9 +88,22 @@ async function loadTransactions() {
         const res = await fetch(`${API_URL}/transactions`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
-        transactions = await res.json();
+        if (res.status === 401) {
+            console.warn('Session expired or token invalid (401). Logging out user.');
+            handleLogout(true);
+            showAuthError('login-error', 'Session expired. Please login again.');
+            return;
+        }
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            transactions = data;
+        } else {
+            console.warn('Received non-array transactions response:', data);
+            transactions = [];
+        }
     } catch (err) {
         console.error('Failed to load transactions:', err);
+        transactions = [];
     }
 }
 
@@ -180,7 +195,7 @@ async function handleRegister(e) {
     }
 }
 
-function handleLogout() {
+function handleLogout(showLoginModal = false) {
     authToken = null;
     currentUser = null;
     transactions = [];
@@ -189,6 +204,9 @@ function handleLogout() {
     document.getElementById('login-form').reset();
     toggleAuth('login');
     checkAuth();
+    if (showLoginModal) {
+        document.getElementById('auth-page').style.display = 'flex';
+    }
 }
 
 function handleAuthActionButton() {
@@ -209,30 +227,34 @@ function closeAuthModal() {
 
 // Google OAuth Login
 function initGoogleSignIn() {
-    if (typeof google !== 'undefined') {
-        google.accounts.id.initialize({
-            client_id: "5510604688-ome7np9c7sndt1ra35lvvtjuqd50gjl9.apps.googleusercontent.com",
-            callback: handleGoogleLogin
-        });
-
-        const loginBtn = document.getElementById("google-signin-btn-login");
-        if (loginBtn) {
-            google.accounts.id.renderButton(loginBtn, {
-                theme: "filled_black",
-                size: "large",
-                text: "continue_with",
-                width: 340
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+        try {
+            google.accounts.id.initialize({
+                client_id: "5510604688-ome7np9c7sndt1ra35lvvtjuqd50gjl9.apps.googleusercontent.com",
+                callback: handleGoogleLogin
             });
-        }
 
-        const regBtn = document.getElementById("google-signin-btn-register");
-        if (regBtn) {
-            google.accounts.id.renderButton(regBtn, {
-                theme: "filled_black",
-                size: "large",
-                text: "continue_with",
-                width: 340
-            });
+            const loginBtn = document.getElementById("google-signin-btn-login");
+            if (loginBtn) {
+                google.accounts.id.renderButton(loginBtn, {
+                    theme: "filled_black",
+                    size: "large",
+                    text: "continue_with",
+                    width: 340
+                });
+            }
+
+            const regBtn = document.getElementById("google-signin-btn-register");
+            if (regBtn) {
+                google.accounts.id.renderButton(regBtn, {
+                    theme: "filled_black",
+                    size: "large",
+                    text: "continue_with",
+                    width: 340
+                });
+            }
+        } catch (err) {
+            console.warn("Google Sign-In initialization failed:", err);
         }
     } else {
         console.warn("Google API client not loaded. Cannot initialize Google Sign-in.");
@@ -325,9 +347,10 @@ function formatCurrency(num) {
 function calculateStats(txns = transactions) {
     let totalIncome = 0;
     let totalExpense = 0;
-    txns.forEach(t => {
-        if (t.type === 'income') totalIncome += t.amount;
-        else totalExpense += t.amount;
+    const safeTxns = Array.isArray(txns) ? txns : [];
+    safeTxns.forEach(t => {
+        if (t && t.type === 'income') totalIncome += (Number(t.amount) || 0);
+        else if (t) totalExpense += (Number(t.amount) || 0);
     });
     return {
         totalIncome,
@@ -370,7 +393,8 @@ function updateDashboard() {
     const recentTbody = document.getElementById('recent-tbody');
     recentTbody.innerHTML = '';
 
-    const recent = [...transactions].slice(0, 5);
+    const safeTxns = Array.isArray(transactions) ? transactions : [];
+    const recent = [...safeTxns].slice(0, 5);
 
     if (recent.length === 0) {
         recentTbody.innerHTML = '<tr><td colspan="4" class="empty-state" style="padding: 30px;">No recent transactions. Add one to get started!</td></tr>';
@@ -378,12 +402,13 @@ function updateDashboard() {
     }
 
     recent.forEach(t => {
+        if (!t) return;
         recentTbody.innerHTML += `
         <tr>
-          <td><div style="font-weight: 500;">${t.desc}</div></td>
-          <td><span class="badge cat-${t.category.toLowerCase()}">${t.category}</span></td>
-          <td style="color: var(--muted); font-size: 13px;">${t.date}</td>
-          <td class="amount-cell ${t.type}">${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}</td>
+          <td><div style="font-weight: 500;">${t.desc || ''}</div></td>
+          <td><span class="badge cat-${(t.category || '').toLowerCase()}">${t.category || ''}</span></td>
+          <td style="color: var(--muted); font-size: 13px;">${t.date || ''}</td>
+          <td class="amount-cell ${t.type}">${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount || 0)}</td>
         </tr>
       `;
     });
@@ -427,7 +452,17 @@ async function handleAdd(e) {
                 type: currentType, amount, date, category, desc
             })
         });
+        if (res.status === 401) {
+            handleLogout(true);
+            showAuthError('login-error', 'Session expired. Please login again.');
+            return;
+        }
+        if (!res.ok) {
+            showToast('Error adding transaction');
+            return;
+        }
         const newTxn = await res.json();
+        if (!Array.isArray(transactions)) transactions = [];
         transactions.unshift(newTxn);
         updateDashboard();
 
@@ -458,10 +493,12 @@ function updateHistory() {
     const catFilter = document.getElementById('filter-category').value;
     const searchFilter = document.getElementById('filter-search').value.toLowerCase();
 
-    let filtered = transactions.filter(t => {
+    const safeTxns = Array.isArray(transactions) ? transactions : [];
+    let filtered = safeTxns.filter(t => {
+        if (!t) return false;
         if (typeFilter !== 'all' && t.type !== typeFilter) return false;
         if (catFilter !== 'all' && t.category !== catFilter) return false;
-        if (searchFilter && !t.desc.toLowerCase().includes(searchFilter)) return false;
+        if (searchFilter && !t.desc?.toLowerCase().includes(searchFilter)) return false;
         return true;
     });
 
@@ -479,10 +516,10 @@ function updateHistory() {
         filtered.forEach(t => {
             tbody.innerHTML += `
           <tr>
-            <td><div style="font-weight: 500;">${t.desc}</div></td>
-            <td><span class="badge cat-${t.category.toLowerCase()}">${t.category}</span></td>
-            <td style="color: var(--muted); font-size: 13px;">${t.date}</td>
-            <td class="amount-cell ${t.type}">${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount)}</td>
+            <td><div style="font-weight: 500;">${t.desc || ''}</div></td>
+            <td><span class="badge cat-${(t.category || '').toLowerCase()}">${t.category || ''}</span></td>
+            <td style="color: var(--muted); font-size: 13px;">${t.date || ''}</td>
+            <td class="amount-cell ${t.type}">${t.type === 'income' ? '+' : '-'}${formatCurrency(t.amount || 0)}</td>
             <td style="text-align: center;">
               <button class="btn btn-danger" onclick="deleteTransaction('${t._id}')">Delete</button>
             </td>
@@ -499,8 +536,15 @@ async function deleteTransaction(id) {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${authToken}` }
             });
+            if (res.status === 401) {
+                handleLogout(true);
+                showAuthError('login-error', 'Session expired. Please login again.');
+                return;
+            }
             if (res.ok) {
-                transactions = transactions.filter(t => t._id !== id);
+                if (Array.isArray(transactions)) {
+                    transactions = transactions.filter(t => t && t._id !== id);
+                }
                 updateHistory();
                 updateDashboard();
                 showToast('Transaction deleted');
@@ -515,7 +559,8 @@ async function deleteTransaction(id) {
 
 // Reports Page Logic
 function updateReports() {
-    const { totalIncome, totalExpense } = calculateStats();
+    const safeTxns = Array.isArray(transactions) ? transactions : [];
+    const { totalIncome, totalExpense } = calculateStats(safeTxns);
 
     // Update legend amounts
     document.getElementById('legend-income-amount').textContent = formatCurrency(totalIncome);
@@ -544,7 +589,7 @@ function updateReports() {
     }
 
     // Category Breakdown Logic
-    const expenses = transactions.filter(t => t.type === 'expense');
+    const expenses = safeTxns.filter(t => t && t.type === 'expense');
     const categoryTotals = {};
 
     expenses.forEach(t => {
@@ -552,7 +597,7 @@ function updateReports() {
             categoryTotals[t.category] = { count: 0, amount: 0 };
         }
         categoryTotals[t.category].count += 1;
-        categoryTotals[t.category].amount += t.amount;
+        categoryTotals[t.category].amount += (t.amount || 0);
     });
 
     const sortedCategories = Object.keys(categoryTotals).sort((a, b) => categoryTotals[b].amount - categoryTotals[a].amount);
@@ -563,7 +608,7 @@ function updateReports() {
     const barChartContainer = document.getElementById('bar-chart-container');
     barChartContainer.innerHTML = '';
 
-    if (expenses.length === 0) {
+    if (expenses.length === 0 || sortedCategories.length === 0) {
         breakdownTbody.innerHTML = '<tr><td colspan="4" class="empty-state">No expenses to display</td></tr>';
         barChartContainer.innerHTML = '<div class="empty-state" style="padding: 40px 20px;">No expense data for charts</div>';
         return;
@@ -573,7 +618,7 @@ function updateReports() {
 
     sortedCategories.forEach(cat => {
         const data = categoryTotals[cat];
-        const percentage = ((data.amount / totalExpense) * 100).toFixed(1);
+        const percentage = totalExpense > 0 ? ((data.amount / totalExpense) * 100).toFixed(1) : '0';
 
         // Build Table Row
         breakdownTbody.innerHTML += `
@@ -586,7 +631,7 @@ function updateReports() {
       `;
 
         // Build Bar Chart Row (Pure CSS)
-        const fillWidth = (data.amount / maxAmount) * 100;
+        const fillWidth = maxAmount > 0 ? (data.amount / maxAmount) * 100 : 0;
         barChartContainer.innerHTML += `
         <div class="bar-wrapper-horizontal">
           <div class="bar-label-horiz">${cat}</div>
@@ -634,13 +679,15 @@ async function sendChatMessage() {
     // Build Context
     const { totalIncome, totalExpense, netBalance } = calculateStats();
 
-    const recent = [...transactions].slice(0, 5)
-        .map(t => `${t.date} | ${t.desc} | ${t.category} | ${t.type === 'income' ? '+' : '-'}₹${t.amount}`)
+    const safeTxns = Array.isArray(transactions) ? transactions : [];
+    const recent = [...safeTxns].slice(0, 5)
+        .map(t => t ? `${t.date || ''} | ${t.desc || ''} | ${t.category || ''} | ${t.type === 'income' ? '+' : '-'}₹${t.amount || 0}` : '')
+        .filter(Boolean)
         .join('\n');
 
-    const expenses = transactions.filter(t => t.type === 'expense');
+    const expenses = safeTxns.filter(t => t && t.type === 'expense');
     const catMap = {};
-    expenses.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + t.amount; });
+    expenses.forEach(t => { catMap[t.category] = (catMap[t.category] || 0) + (t.amount || 0); });
     const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(e => `${e[0]} (₹${e[1]})`).join(', ');
 
     const systemPrompt = `You are a personal finance assistant for Expense Manager Lite.
@@ -667,6 +714,13 @@ Keep responses under 100 words unless detailed analysis is requested.`;
                 context: { totalIncome, totalExpense, netBalance, topCats, recent }
             })
         });
+
+        if (response.status === 401) {
+            typing.classList.remove('show');
+            handleLogout(true);
+            showAuthError('login-error', 'Session expired. Please login again.');
+            return;
+        }
 
         if (!response.ok) {
             const err = await response.json();
@@ -737,6 +791,13 @@ function handleReceiptScan(event) {
                 body: JSON.stringify({ image: base64Image })
             });
 
+            if (response.status === 401) {
+                statusDiv.textContent = '❌ Session expired. Please login again.';
+                statusDiv.style.color = 'var(--expense)';
+                handleLogout(true);
+                return;
+            }
+
             if (!response.ok) throw new Error("API request failed");
 
             const data = await response.json();
@@ -781,9 +842,11 @@ function generatePDF(title, filteredTransactions) {
 
     let tIncome = 0;
     let tExpense = 0;
-    filteredTransactions.forEach(t => {
-        if (t.type === 'income') tIncome += t.amount;
-        else tExpense += t.amount;
+    const safeTxns = Array.isArray(filteredTransactions) ? filteredTransactions : [];
+    safeTxns.forEach(t => {
+        if (!t) return;
+        if (t.type === 'income') tIncome += (Number(t.amount) || 0);
+        else tExpense += (Number(t.amount) || 0);
     });
 
     doc.setFontSize(12);
@@ -792,12 +855,12 @@ function generatePDF(title, filteredTransactions) {
     doc.text(`Total Expenses: ${formatCurrency(tExpense)}`, 80, 40);
     doc.text(`Net Balance: ${formatCurrency(tIncome - tExpense)}`, 150, 40);
 
-    const tableData = filteredTransactions.map(t => [
-        t.date,
-        t.desc,
-        t.category,
+    const tableData = safeTxns.map(t => [
+        t.date || '',
+        t.desc || '',
+        t.category || '',
         t.type === 'income' ? 'Income' : 'Expense',
-        formatCurrency(t.amount)
+        formatCurrency(t.amount || 0)
     ]);
 
     doc.autoTable({
@@ -817,12 +880,12 @@ function generatePDF(title, filteredTransactions) {
         }
     });
 
-    const expenses = filteredTransactions.filter(t => t.type === 'expense');
+    const expenses = safeTxns.filter(t => t && t.type === 'expense');
     const catMap = {};
     expenses.forEach(t => {
         if (!catMap[t.category]) catMap[t.category] = { count: 0, amount: 0 };
         catMap[t.category].count += 1;
-        catMap[t.category].amount += t.amount;
+        catMap[t.category].amount += (t.amount || 0);
     });
 
     const catData = Object.keys(catMap).map(cat => [
@@ -858,7 +921,9 @@ function downloadMonthlyPDF() {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
-    const filtered = transactions.filter(t => {
+    const safeTxns = Array.isArray(transactions) ? transactions : [];
+    const filtered = safeTxns.filter(t => {
+        if (!t || !t.date) return false;
         const tDate = new Date(t.date);
         return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
     });
@@ -873,7 +938,9 @@ function downloadWeeklyPDF() {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(now.getDate() - 7);
 
-    const filtered = transactions.filter(t => {
+    const safeTxns = Array.isArray(transactions) ? transactions : [];
+    const filtered = safeTxns.filter(t => {
+        if (!t || !t.date) return false;
         const tDate = new Date(t.date);
         return tDate >= sevenDaysAgo && tDate <= now;
     });
